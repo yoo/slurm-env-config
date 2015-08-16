@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"strings"
 	"unicode"
 )
 
@@ -171,6 +172,7 @@ type PowerSave struct {
 }
 
 type Node struct {
+	_name           string
 	NodeName        string
 	NodeHostname    string
 	NodeAddr        string
@@ -196,6 +198,7 @@ type Node struct {
 }
 
 type Partition struct {
+	_name                string
 	PartitionName        string
 	AllocNodes           string
 	AllowAccounts        string
@@ -274,6 +277,27 @@ func (c *Config) Write(w io.Writer) {
 	w.Write([]byte("#slurm.conf\n\n"))
 	w.Write([]byte("#\n# Controll Machines\n#\n"))
 	writeStructToConfig(c.Controller, w)
+	w.Write([]byte("#\n# General\n#\n"))
+	writeStructToConfig(c.General, w)
+	w.Write([]byte("#\n# Timers\n#\n"))
+	writeStructToConfig(c.Timers, w)
+	w.Write([]byte("#\n# Scheduling\n#\n"))
+	writeStructToConfig(c.Scheduling, w)
+	w.Write([]byte("#\n# JobPriority\n#\n"))
+	writeStructToConfig(c.JobPriority, w)
+	w.Write([]byte("#\n# Logging and Accounting\n#\n"))
+	writeStructToConfig(c.LoggingAccounting, w)
+	w.Write([]byte("#\n# Power save\n#\n"))
+	writeStructToConfig(c.PowerSave, w)
+	w.Write([]byte("#\n# Nodes\n#\n"))
+	for _, node := range c.Node {
+		writeStructToConfig(node, w)
+	}
+	w.Write([]byte("#\n# Partitions\n#\n"))
+	for _, partition := range c.Partition {
+		writeStructToConfig(partition, w)
+	}
+
 }
 
 func writeStructToConfig(st interface{}, w io.Writer) {
@@ -287,6 +311,9 @@ func writeStructToConfig(st interface{}, w io.Writer) {
 	for i := 0; i < val.NumField(); i++ {
 		configField := typ.Field(i)
 		configValue := val.Field(i)
+		if configField.Name == "_name" {
+			endl = []byte{' '}
+		}
 		s := configValue.String()
 		if s == "" {
 			continue
@@ -297,10 +324,13 @@ func writeStructToConfig(st interface{}, w io.Writer) {
 		w.Write([]byte(s))
 		w.Write(endl)
 	}
-
+	w.Write([]byte{'\n'})
 }
 
 func (c *Config) FromEvn() {
+	c.findNodes()
+	c.findPartitions()
+
 	val := reflect.ValueOf(c).Elem()
 	for i := 0; i < val.NumField(); i++ {
 		confVal := val.Field(i)
@@ -313,23 +343,47 @@ func (c *Config) FromEvn() {
 			fillStructFromEnv(confVal)
 		}
 	}
+
+}
+
+func (c *Config) findNodes() {
+	envNodes := os.Getenv("SLRM_NODE_NAMES")
+	nodes := strings.Split(envNodes, ",")
+	for _, name := range nodes {
+		node := Node{_name: name}
+		c.Node = append(c.Node, node)
+	}
+}
+
+func (c *Config) findPartitions() {
+	envPartitions := os.Getenv("SLRM_PARTITION_NAMES")
+	partitions := strings.Split(envPartitions, ",")
+	for _, name := range partitions {
+		partition := Partition{_name: name}
+		c.Partition = append(c.Partition, partition)
+	}
+
 }
 
 func fillStructFromEnv(val reflect.Value) {
+	prefix := "SLURM_"
 	typ := val.Type()
 	for i := 0; i < val.NumField(); i++ {
 		for i := 0; i < val.NumField(); i++ {
 			configField := typ.Field(i)
 			configVal := val.Field(i)
-
-			envName := toEnvName(configField.Name)
+			if configField.Name == "_name" {
+				prefix += strings.ToUpper(configVal.String()) + "_"
+				continue
+			}
+			envName := toEnvName(prefix, configField.Name)
 			configVal.SetString(os.Getenv(envName))
 		}
 	}
 }
 
-func toEnvName(name string) string {
-	envName := []rune("SLURM")
+func toEnvName(prefix string, name string) string {
+	envName := []rune(prefix)
 	for _, r := range name {
 		if unicode.IsUpper(r) {
 			envName = append(envName, '_', r)

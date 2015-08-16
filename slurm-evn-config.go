@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"log"
 	"os"
 	"reflect"
 	"unicode"
@@ -253,11 +254,19 @@ type Config struct {
 }
 
 func main() {
-
-	confFile := os.Args[1]
+	var out io.Writer
+	if len(os.Args) > 1 {
+		fi, err := os.Create(os.Args[1])
+		if err != nil {
+			log.Println(err)
+		}
+		out = fi
+	} else {
+		out = os.Stdout
+	}
 	conf := Config{}
 	conf.FromEvn()
-	conf.Write(os.Stdout)
+	conf.Write(out)
 }
 
 func (c *Config) Write(w io.Writer) {

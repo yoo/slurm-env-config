@@ -313,6 +313,7 @@ func writeStructToConfig(st interface{}, w io.Writer) {
 		configValue := val.Field(i)
 		if configField.Name == "_name" {
 			endl = []byte{' '}
+			continue
 		}
 		s := configValue.String()
 		if s == "" {
@@ -336,8 +337,8 @@ func (c *Config) FromEvn() {
 		confVal := val.Field(i)
 		switch confVal.Kind() {
 		case reflect.Slice:
-			for i := 0; i < confVal.Len(); i++ {
-				fillStructFromEnv(confVal.Index(i))
+			for j := 0; j < confVal.Len(); j++ {
+				fillStructFromEnv(confVal.Index(j))
 			}
 		case reflect.Struct:
 			fillStructFromEnv(confVal)
@@ -347,7 +348,7 @@ func (c *Config) FromEvn() {
 }
 
 func (c *Config) findNodes() {
-	envNodes := os.Getenv("SLRM_NODE_NAMES")
+	envNodes := os.Getenv("SLURM_NODE_NAMES")
 	nodes := strings.Split(envNodes, ",")
 	for _, name := range nodes {
 		node := Node{_name: name}
@@ -356,7 +357,7 @@ func (c *Config) findNodes() {
 }
 
 func (c *Config) findPartitions() {
-	envPartitions := os.Getenv("SLRM_PARTITION_NAMES")
+	envPartitions := os.Getenv("SLURM_PARTITION_NAMES")
 	partitions := strings.Split(envPartitions, ",")
 	for _, name := range partitions {
 		partition := Partition{_name: name}
@@ -366,19 +367,17 @@ func (c *Config) findPartitions() {
 }
 
 func fillStructFromEnv(val reflect.Value) {
-	prefix := "SLURM_"
+	prefix := "SLURM"
 	typ := val.Type()
 	for i := 0; i < val.NumField(); i++ {
-		for i := 0; i < val.NumField(); i++ {
-			configField := typ.Field(i)
-			configVal := val.Field(i)
-			if configField.Name == "_name" {
-				prefix += strings.ToUpper(configVal.String()) + "_"
-				continue
-			}
-			envName := toEnvName(prefix, configField.Name)
-			configVal.SetString(os.Getenv(envName))
+		configField := typ.Field(i)
+		configVal := val.Field(i)
+		if configField.Name == "_name" {
+			prefix += "_" + strings.ToUpper(configVal.String())
+			continue
 		}
+		envName := toEnvName(prefix, configField.Name)
+		configVal.SetString(os.Getenv(envName))
 	}
 }
 
